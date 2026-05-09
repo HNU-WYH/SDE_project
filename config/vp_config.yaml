@@ -15,10 +15,10 @@ noise_scheduler:
 
 training:
     t_eps: 1.0e-5         # minimum sampling time during training; avoids division by sigma(t)≈0 at t=0
-    n_steps: 20000        # total number of gradient update steps
-    batch_size: 512       # number of (x_0, t) pairs per gradient step
+    n_steps: 50000        # total number of gradient update steps
+    batch_size: 2048       # number of (x_0, t) pairs per gradient step
     lr: 1.0e-3            # Adam learning rate
-    log_interval: 500        # print loss every this many steps
+    log_interval: 1000        # print loss every this many steps
     hidden_dim: 256       # width of each hidden layer in ScoreNet
     n_layers: 4           # number of hidden layers in ScoreNet
     time_emb_dim: 64      # dimension of the Fourier time embedding (must be even)

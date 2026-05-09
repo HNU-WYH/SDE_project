@@ -27,7 +27,7 @@ def build_gmm(cfg: dict) -> gaussian_mix:
 
 # ---- Train the ScoreNet by minimizing deviation of condition scores ---
 def train(cfg_path: str, save_path: str = None):
-    with open(cfg_path) as f:
+    with open(cfg_path, encoding='utf-8') as f:
         cfg = yaml.safe_load(f)
 
     beta_min = cfg["noise_scheduler"]["beta_min"]
@@ -84,5 +84,5 @@ def train(cfg_path: str, save_path: str = None):
 
 if __name__ == "__main__":
     cfg_path  = os.path.join(os.path.dirname(__file__), "..", "config", "vp_config.yaml")
-    save_path = os.path.join(os.path.dirname(__file__), "..", "models", "score_net.pt")
+    save_path = os.path.join(os.path.dirname(__file__), "..", "models", "../backup/score_net_ep20000.pt")
     train(cfg_path, save_path)

@@ -191,8 +191,8 @@ if __name__ == "__main__":
     from matplotlib import pyplot as plt
     from matplotlib.patches import Patch
 
-    cfg_path = os.path.join(os.path.dirname(__file__), "..", "config", "vp_config.yaml")
-    with open(cfg_path) as f:
+    cfg_path = os.path.join(os.path.dirname(__file__), "", "../config", "vp_config.yaml")
+    with open(cfg_path, encoding='utf-8') as f:
         cfg = yaml.safe_load(f)
 
     # data generation config
