@@ -9,20 +9,9 @@ import torch.optim as optim
 # allow imports from project root
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from data.gaussian_mixture import gaussian_mix
-from models.score_model import ScoreNet
+from models.infer import build_gmm
+from models.score import ScoreNet
 from utils.forward_vp import forward_diffuse
-
-
-# ---- Build Data and Exact score Generator ----
-def build_gmm(cfg: dict) -> gaussian_mix:
-    K      = cfg["data"]["gmm"]["K"]
-    R      = cfg["data"]["gmm"]["R"]
-    sigma0 = cfg["data"]["gmm"]["sigma"]
-    angles = np.linspace(0, 2 * np.pi, K, endpoint=False)
-    mus    = np.stack([R * np.cos(angles), R * np.sin(angles)], axis=1)
-    sigmas = np.full((K, 2), sigma0)
-    return gaussian_mix(mus, sigmas)
 
 
 # ---- Train the ScoreNet by minimizing deviation of condition scores ---

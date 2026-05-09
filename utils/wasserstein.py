@@ -3,7 +3,7 @@ from scipy.stats import wasserstein_distance
 
 
 def sliced_wasserstein(x: np.ndarray, y: np.ndarray,
-                       n_slices: int = 200, seed: int = 0) -> float:
+                       n_slices: int = 500, seed: int = 0) -> float:
     """
     Sliced Wasserstein distance between two 2D point clouds.
 

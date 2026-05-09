@@ -28,9 +28,9 @@ training:
 inference:
     t_eps: 1.0e-3         # stop reverse sampling at t_eps instead of 0 to avoid the sharp score near t=0
     n_steps: 500          # number of discretization steps for the reverse sampler
-    n_samples: 1000       # number of samples to generate
+    n_samples: 1024       # number of samples to generate
     n_corrector: 1        # Langevin corrector steps per predictor step (PC sampler only)
-    snr: 0.16             # signal-to-noise ratio for the Langevin step size (PC sampler only)
+    snr: 0.01             # signal-to-noise ratio for the Langevin step size (PC sampler only)
 
 plot:
     vis_n: 400            # grid resolution for density visualisation (vis_n x vis_n points)

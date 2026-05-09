@@ -1,32 +1,45 @@
 #!/usr/bin/env python3
 """Visual 1 — Sampling Dynamics
 
-Generates scatter plots of samples from the three reverse samplers
-(Euler-Maruyama, Probability Flow ODE, Predictor-Corrector) with the
-ground-truth p_0 density in the background.
+Runs three reverse samplers and plots particle trajectories (T -> 0)
+with p_0 and p_T density backgrounds overlaid.
 
-Toggle USE_EXACT_SCORE below to switch between the analytic score and the
-trained MLP.
+Tweak the parameters in "Experiment Setup" below before running.
 """
 import os
 import sys
 
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 sys.path.insert(0, os.path.abspath('..'))
 
 import numpy as np
 import matplotlib.pyplot as plt
 import yaml
-import torch
 
-from data.gaussian_mixture import gaussian_mix
-from models.solver import euler_maruyama, probability_flow_ode, predictor_corrector
-from models.score_model import ScoreNet
+from models.infer import build_gmm, build_score_fn, run_samplers, load_results
+from utils.visualize import plot_trajectories
+
+# =============================================================================
+# Experiment Setup
+# =============================================================================
+USE_EXACT_SCORE = False    # False → load MLP from models/score_net.pt
+SAVE_DATA       = False   # True  → save trajectories to output/traj_data.npz
+LOAD_DATA       = False   # True  → skip sampling, reload from output/traj_data.npz
+DATA_PATH       = 'output/traj_data.npz'
+
+# inference overrides (None → use value from vp_config.yaml)
+N_SAMPLES   = 1000   # number of particles to generate
+N_STEPS     = 500    # reverse discretisation steps
+N_CORRECTOR = 1      # Langevin corrector steps per predictor step (PC only)
+SNR         = 0.10   # signal-to-noise ratio for Langevin step size  (PC only)
+
+# trajectory visualisation
+N_TRAJ      = 300    # number of particle paths to draw
+TRAJ_STEPS  = 500     # subsample trajectory to this many time snapshots
+# =============================================================================
 
 
 def main():
-    # ------------------------------------------------------------------
-    # Configuration
-    # ------------------------------------------------------------------
     with open('../config/vp_config.yaml', encoding='utf-8') as f:
         cfg = yaml.safe_load(f)
 
@@ -34,123 +47,60 @@ def main():
 
     beta_min = cfg['noise_scheduler']['beta_min']
     beta_max = cfg['noise_scheduler']['beta_max']
-    T = cfg['noise_scheduler']['T']
+    T        = cfg['noise_scheduler']['T']
+    vis_n    = cfg['plot']['vis_n']
+    xy_lim   = cfg['plot']['xy_lim']
 
-    t_eps = cfg['inference']['t_eps']
-    n_steps = cfg['inference']['n_steps']
-    n_samples = cfg['inference']['n_samples']
-    n_corrector = cfg['inference']['n_corrector']
-    snr = cfg['inference']['snr']
-
-    vis_n = cfg['plot']['vis_n']
-    xy_lim = cfg['plot']['xy_lim']
-    n_levels = cfg['plot']['n_levels']
-
-    # build GMM
-    K = cfg['data']['gmm']['K']
-    R = cfg['data']['gmm']['R']
-    sigma0 = cfg['data']['gmm']['sigma']
-    angles = np.linspace(0, 2 * np.pi, K, endpoint=False)
-    mus = np.stack([R * np.cos(angles), R * np.sin(angles)], axis=1)
-    sigmas = np.full((K, 2), sigma0)
-    gmm = gaussian_mix(mus, sigmas)
-
-    # time grid for reverse sampling (T -> t_eps)
-    ts = np.linspace(T, t_eps, n_steps + 1)
-
-    print(f'GMM: {K} components, R={R}, sigma={sigma0}')
-    print(f'Reverse steps: {n_steps},  t in [{t_eps}, {T}]')
+    # apply overrides
+    if N_STEPS     is not None: cfg['inference']['n_steps']     = N_STEPS
+    if N_SAMPLES   is not None: cfg['inference']['n_samples']   = N_SAMPLES
+    if N_CORRECTOR is not None: cfg['inference']['n_corrector'] = N_CORRECTOR
+    if SNR         is not None: cfg['inference']['snr']         = SNR
 
     # ------------------------------------------------------------------
-    # Score function
+    # GMM + score function
     # ------------------------------------------------------------------
-    USE_EXACT_SCORE = True  # <-- toggle here
+    gmm = build_gmm(cfg)
+    score_fn, score_label = build_score_fn(cfg, gmm, use_exact=USE_EXACT_SCORE)
+    print(f'Score  : {score_label}')
+    print(f'Steps  : {cfg["inference"]["n_steps"]}   '
+          f'Samples: {cfg["inference"]["n_samples"]}   '
+          f'SNR: {cfg["inference"]["snr"]}   '
+          f'n_corrector: {cfg["inference"]["n_corrector"]}')
 
-    if USE_EXACT_SCORE:
-        score_fn = lambda x, t: gmm.exact_score(x, t, beta_min, beta_max)
-        score_label = 'Exact Score'
+    # ------------------------------------------------------------------
+    # Sampling (or load from disk)
+    # ------------------------------------------------------------------
+    if LOAD_DATA and os.path.exists(DATA_PATH):
+        print(f'Loading from {DATA_PATH!r} ...')
+        results = load_results(DATA_PATH)
     else:
-        train_cfg = cfg['training']
-        model = ScoreNet(
-            data_dim=2,
-            hidden_dim=train_cfg['hidden_dim'],
-            n_layers=train_cfg['n_layers'],
-            time_emb_dim=train_cfg['time_emb_dim'],
-            min_freq=train_cfg['min_freq'],
-            max_freq=train_cfg['max_freq'],
-        )
-        model.load_state_dict(
-            torch.load('../backup/score_net_ep20000.pt', map_location='cpu')
-        )
-        model.eval()
-        score_fn = model.score_fn
-        score_label = 'Fitted Score (MLP)'
+        results = run_samplers(cfg, score_fn,
+                               save_path=DATA_PATH if SAVE_DATA else None)
 
-    print(f'Using: {score_label}')
+    traj_em  = results['em']
+    traj_ode = results['ode']
+    traj_pc  = results['pc']
 
     # ------------------------------------------------------------------
-    # Sampling
+    # Figure: 1 row × 3 cols — trajectory plots
     # ------------------------------------------------------------------
-    x_T = np.random.randn(n_samples, 2)
-
-    print('Running Euler-Maruyama...')
-    traj_em = euler_maruyama(score_fn, x_T, ts, beta_min, beta_max)
-    samples_em = traj_em[-1]
-
-    print('Running Probability Flow ODE...')
-    traj_ode = probability_flow_ode(score_fn, x_T, ts, beta_min, beta_max)
-    samples_ode = traj_ode[-1]
-
-    print('Running Predictor-Corrector...')
-    traj_pc = predictor_corrector(
-        score_fn, x_T, ts, beta_min, beta_max,
-        n_corrector=n_corrector, snr=snr
-    )
-    samples_pc = traj_pc[-1]
-
-    print('Done.')
-
-    # ------------------------------------------------------------------
-    # Plot
-    # ------------------------------------------------------------------
-    x_grid = np.linspace(-xy_lim, xy_lim, vis_n)
-    y_grid = np.linspace(-xy_lim, xy_lim, vis_n)
-    X, Y = np.meshgrid(x_grid, y_grid)
-    pts = np.stack([X.ravel(), Y.ravel()], axis=1)
-    Z0 = gmm.density(pts).reshape(vis_n, vis_n)
-
-    def plot_density_bg(ax, Z, color='steelblue', n_lev=n_levels):
-        """Draw smooth filled density contours from transparent to opaque."""
-        z_ceil = Z.max() * 1.001
-        levels = np.linspace(Z.max() * 0.05, Z.max(), n_lev)
-        alphas = np.linspace(0.04, 1.0, n_lev)
-        for i in range(len(levels) - 1):
-            ax.contourf(
-                X, Y, Z, levels=[levels[i], levels[i + 1]],
-                colors=[color], alpha=alphas[i]
-            )
-        ax.contourf(
-            X, Y, Z, levels=[levels[-1], z_ceil],
-            colors=[color], alpha=alphas[-1]
-        )
-
-    fig, axes = plt.subplots(1, 3, figsize=(13, 4))
-    configs = [
-        (samples_em, 'P Sampler\n(Euler-Maruyama)'),
-        (samples_pc, 'PC Sampler\n(Predictor-Corrector)'),
-        (samples_ode, 'ODE Sampler\n(Probability Flow)'),
+    sampler_cfgs = [
+        (traj_em,  'P Sampler (Euler-Maruyama)'),
+        (traj_pc,  'PC Sampler (Predictor-Corrector)'),
+        (traj_ode, 'ODE Sampler (Probability Flow)'),
     ]
 
-    for ax, (samples, title) in zip(axes, configs):
-        plot_density_bg(ax, Z0, color='steelblue')
-        ax.scatter(
-            samples[:, 0], samples[:, 1],
-            s=4, alpha=0.4, color='white', linewidths=0
+    fig, axes = plt.subplots(1, 3, figsize=(13, 4.5))
+
+    for ax, (traj, name) in zip(axes, sampler_cfgs):
+        plot_trajectories(
+            ax, traj, gmm,
+            xy_lim=xy_lim, vis_n=vis_n,
+            n_traj=N_TRAJ, traj_steps=TRAJ_STEPS,
+            beta_min=beta_min, beta_max=beta_max, T=T,
         )
-        ax.set_xlim(-xy_lim, xy_lim)
-        ax.set_ylim(-xy_lim, xy_lim)
-        ax.set_title(f'{title}\n({score_label})', fontsize=10)
-        ax.set_aspect('equal')
+        ax.set_title(f'{name}\n({score_label})', fontsize=10)
         ax.set_xlabel(r'$x_1$')
         ax.set_ylabel(r'$x_2$')
 
