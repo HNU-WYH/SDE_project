@@ -14,10 +14,10 @@ noise_scheduler:
     T: 1.0                # total diffusion time
 
 training:
-    t_eps: 1e-5           # minimum sampling time during training; avoids division by sigma(t)≈0 at t=0
+    t_eps: 1.0e-5         # minimum sampling time during training; avoids division by sigma(t)≈0 at t=0
     n_steps: 20000        # total number of gradient update steps
     batch_size: 512       # number of (x_0, t) pairs per gradient step
-    lr: 1e-3              # Adam learning rate
+    lr: 1.0e-3            # Adam learning rate
     log_interval: 500        # print loss every this many steps
     hidden_dim: 256       # width of each hidden layer in ScoreNet
     n_layers: 4           # number of hidden layers in ScoreNet
@@ -26,7 +26,7 @@ training:
     max_freq: 64.0        # highest frequency in the Fourier time embedding
 
 inference:
-    t_eps: 1e-3           # stop reverse sampling at t_eps instead of 0 to avoid the sharp score near t=0
+    t_eps: 1.0e-3         # stop reverse sampling at t_eps instead of 0 to avoid the sharp score near t=0
     n_steps: 500          # number of discretization steps for the reverse sampler
     n_samples: 1000       # number of samples to generate
     n_corrector: 1        # Langevin corrector steps per predictor step (PC sampler only)
