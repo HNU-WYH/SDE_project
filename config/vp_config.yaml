@@ -1,0 +1,39 @@
+seed: 1024
+
+data:
+    N: 10000              # number of samples drawn from the GMM for the dataset
+    path: "data/gmm.npz"  # save path for the generated dataset
+    gmm:
+        K: 8              # number of Gaussian components
+        R: 5              # radius of the circle on which component means are placed
+        sigma: 0.25       # isotropic std of each component
+
+noise_scheduler:
+    beta_min: 0.1         # beta(0): lower end of the linear noise schedule; > 0 for numerical stability near t=0
+    beta_max: 20.0        # beta(T): upper end; large enough so p_T ≈ N(0, I)
+    T: 1.0                # total diffusion time
+
+training:
+    t_eps: 1e-5           # minimum sampling time during training; avoids division by sigma(t)≈0 at t=0
+    n_steps: 20000        # total number of gradient update steps
+    batch_size: 512       # number of (x_0, t) pairs per gradient step
+    lr: 1e-3              # Adam learning rate
+    log_interval: 500        # print loss every this many steps
+    hidden_dim: 256       # width of each hidden layer in ScoreNet
+    n_layers: 4           # number of hidden layers in ScoreNet
+    time_emb_dim: 64      # dimension of the Fourier time embedding (must be even)
+    min_freq: 0.5         # lowest frequency in the Fourier time embedding
+    max_freq: 64.0        # highest frequency in the Fourier time embedding
+
+inference:
+    t_eps: 1e-3           # stop reverse sampling at t_eps instead of 0 to avoid the sharp score near t=0
+    n_steps: 500          # number of discretization steps for the reverse sampler
+    n_samples: 1000       # number of samples to generate
+    n_corrector: 1        # Langevin corrector steps per predictor step (PC sampler only)
+    snr: 0.16             # signal-to-noise ratio for the Langevin step size (PC sampler only)
+
+plot:
+    vis_n: 400            # grid resolution for density visualisation (vis_n x vis_n points)
+    xy_lim: 6.0           # axis limit for plots: x,y in [-xy_lim, xy_lim]
+    n_levels: 15          # number of contourf layers for the smooth density overlay
+    times: [0.0, 0.33, 1.0]  # time snapshots to plot, as fractions of T
