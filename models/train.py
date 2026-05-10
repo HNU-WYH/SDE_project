@@ -79,5 +79,5 @@ def train(cfg_path: str, save_path: str = None):
 
 if __name__ == "__main__":
     cfg_path  = os.path.join(os.path.dirname(__file__), "..", "config", "vp_config.yaml")
-    save_path = os.path.join(os.path.dirname(__file__), "..", "models", "../backup/score_net_ep20000.pt")
+    save_path = os.path.join(os.path.dirname(__file__), "..", "models", "score_net.pt")
     train(cfg_path, save_path)

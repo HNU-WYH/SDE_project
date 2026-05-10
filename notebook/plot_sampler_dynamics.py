@@ -105,7 +105,7 @@ def main():
         ax.set_ylabel(r'$x_2$')
 
     plt.tight_layout()
-    out_path = 'output/visual1_dynamics.png'
+    out_path = '../output/visual1_dynamics.png'
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     plt.savefig(out_path, dpi=150, bbox_inches='tight')
     print(f'Saved to {out_path}')
