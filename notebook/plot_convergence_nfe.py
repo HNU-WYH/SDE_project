@@ -35,14 +35,14 @@ from utils.wasserstein import sliced_wasserstein
 # Experiment Setup
 # =============================================================================
 # NFE grid to sweep
-NFE_LIST    = [10, 50, 100, 250, 500, 1000, 2000]
+NFE_LIST    = [10, 20, 50, 100, 250, 500, 1000, 2000]
 
 # Sliced Wasserstein settings
 N_SLICES    = 1024    # number of random projections (more → less variance)
-SW_SEED     = 42     # projection seed for reproducibility
+SW_SEED     = 64     # projection seed for reproducibility
 
 # Reference distribution
-REF_N       = 5120   # samples drawn from true GMM as ground truth
+REF_N       = 4096   # samples drawn from true GMM as ground truth
 
 # Inference overrides (None → use value from vp_config.yaml)
 N_SAMPLES   = 5120   # generated samples per NFE point
