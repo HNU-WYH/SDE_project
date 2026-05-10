@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from models.infer import build_gmm
 from models.score import ScoreNet
 from utils.forward_vp import forward_diffuse
+from utils.noise_scheduler import sigma2
 
 
 # ---- Train the ScoreNet by minimizing deviation of condition scores ---
@@ -49,13 +50,18 @@ def train(cfg_path: str, save_path: str = None):
         # closed-form forward noising, output noised data & conditional score
         x_t, target = forward_diffuse(x0, t, beta_min, beta_max)      # (N, 2), (N, 2)
 
+        # likelihood weighting lambda(t) = sigma(t)^2 balances loss across t:
+        # without it, small-t terms (sigma->0, score->inf) dominate by ~1e6x
+        lam = sigma2(t, beta_min, beta_max).astype(np.float32)         # (N,)
+
         # convert to torch.tensor
         x_t_th  = torch.tensor(x_t,    dtype=torch.float32)
         t_th    = torch.tensor(t,      dtype=torch.float32)
         tgt_th  = torch.tensor(target, dtype=torch.float32)
+        lam_th  = torch.tensor(lam,    dtype=torch.float32).unsqueeze(-1)  # (N, 1)
 
         pred = model(x_t_th, t_th)
-        loss = ((pred - tgt_th) ** 2).mean()
+        loss = (lam_th * (pred - tgt_th) ** 2).mean()
 
         optimizer.zero_grad()
         loss.backward()

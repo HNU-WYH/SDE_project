@@ -61,7 +61,7 @@ def build_score_fn(cfg: dict, gmm: gaussian_mix,
         model.load_state_dict(torch.load(weights_path, map_location='cpu'))
         model.eval()
         score_fn = model.score_fn
-        label    = 'Fitted Score (MLP)'
+        label    = 'Fitted Score'
 
     return score_fn, label
 

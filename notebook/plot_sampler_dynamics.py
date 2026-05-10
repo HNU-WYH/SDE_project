@@ -86,9 +86,9 @@ def main():
     # Figure: 1 row × 3 cols — trajectory plots
     # ------------------------------------------------------------------
     sampler_cfgs = [
-        (traj_em,  'P Sampler (Euler-Maruyama)'),
-        (traj_pc,  'PC Sampler (Predictor-Corrector)'),
-        (traj_ode, 'ODE Sampler (Probability Flow)'),
+        (traj_em,  'EM Solver (Euler-Maruyama)'),
+        (traj_pc,  'PC Solver (EM & Langevin)'),
+        (traj_ode, 'ODE Solver (Explicit Euler)'),
     ]
 
     fig, axes = plt.subplots(1, 3, figsize=(13, 4.5))
@@ -100,7 +100,7 @@ def main():
             n_traj=N_TRAJ, traj_steps=TRAJ_STEPS,
             beta_min=beta_min, beta_max=beta_max, T=T,
         )
-        ax.set_title(f'{name}\n({score_label})', fontsize=10)
+        ax.set_title(f'{name}\n with {score_label}', fontsize=10)
         ax.set_xlabel(r'$x_1$')
         ax.set_ylabel(r'$x_2$')
 

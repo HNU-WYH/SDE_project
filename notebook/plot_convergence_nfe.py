@@ -17,13 +17,15 @@ Tweak the parameters in "Experiment Setup" below before running.
 """
 import os
 import sys
+import yaml
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 sys.path.insert(0, os.path.abspath('..'))
 
 import numpy as np
 import matplotlib.pyplot as plt
-import yaml
+from matplotlib.lines import Line2D
+
 
 from models.infer import build_gmm, build_score_fn
 from models.solver import euler_maruyama, probability_flow_ode, predictor_corrector
@@ -33,20 +35,20 @@ from utils.wasserstein import sliced_wasserstein
 # Experiment Setup
 # =============================================================================
 # NFE grid to sweep
-NFE_LIST    = [10, 25, 50, 100, 250, 500, 1000]
+NFE_LIST    = [50, 100, 250, 500, 1000, 2000]
 
 # Sliced Wasserstein settings
 N_SLICES    = 500    # number of random projections (more → less variance)
-SW_SEED     = 42     # projection seed for reproducibility
+SW_SEED     = 1024     # projection seed for reproducibility
 
 # Reference distribution
-REF_N       = 5000   # samples drawn from true GMM as ground truth
+REF_N       = 4096   # samples drawn from true GMM as ground truth
 
 # Inference overrides (None → use value from vp_config.yaml)
-N_SAMPLES   = 1000   # generated samples per NFE point
+N_SAMPLES   = 4096   # generated samples per NFE point
 N_CORRECTOR = 1      # Langevin corrector steps per predictor step (PC only)
 SNR         = 0.10   # signal-to-noise ratio for Langevin step size  (PC only)
-T_EPS       = None   # stop time for reverse sampler; None → config value
+T_EPS       = 1e-3   # stop time for reverse sampler; None → config value
 # =============================================================================
 
 
@@ -54,13 +56,22 @@ def run_sweep(score_fn, sampler: str, nfe_list,
               T, t_eps, n_samples, beta_min, beta_max,
               n_corrector, snr, x_ref):
     """
-    Run one sampler across all NFE budgets; return list of SWD values.
+    Run one sampler across all NFE budgets; return (actual_nfe_list, swd_list).
 
     sampler : 'p' | 'pc' | 'ode'
+    NFE accounting:
+        p / ode : NFE = steps  (1 score eval per step)
+        pc      : NFE = steps * (1 + n_corrector)
     """
     swd_list = []
+    actual_nfe_list = []
     for nfe in nfe_list:
-        steps = nfe if sampler in ('p', 'ode') else max(1, nfe // (1 + n_corrector))
+        if sampler in ('p', 'ode'):
+            steps = nfe
+        else:
+            steps = max(1, nfe // (1 + n_corrector))
+
+        actual_nfe = steps if sampler in ('p', 'ode') else steps * (1 + n_corrector)
         ts     = np.linspace(T, t_eps, steps + 1)
         x_init = np.random.randn(n_samples, 2)
 
@@ -74,8 +85,9 @@ def run_sweep(score_fn, sampler: str, nfe_list,
 
         swd = sliced_wasserstein(traj[-1], x_ref, n_slices=N_SLICES, seed=SW_SEED)
         swd_list.append(swd)
-        print(f'  NFE={nfe:5d}  steps={steps:5d}  SWD={swd:.4f}')
-    return swd_list
+        actual_nfe_list.append(actual_nfe)
+        print(f'  NFE={actual_nfe:5d}  steps={steps:5d}  SWD={swd:.4f}')
+    return actual_nfe_list, swd_list
 
 
 def main():
@@ -120,31 +132,87 @@ def main():
     # ------------------------------------------------------------------
     # Plot
     # ------------------------------------------------------------------
-    COLORS = {'Exact': 'steelblue', 'Fitted': 'firebrick'}
-    STYLES = {
-        'p':   ('o', '-',  'Euler-Maruyama (VP-SDE)'),
-        'pc':  ('s', '--', 'Predictor-Corrector (VP-SDE)'),
-        'ode': ('^', ':',  'Explicit Euler (ODE)'),
+    # solver → color,  score type → linestyle
+    COLORS = {
+        'p':   'tab:blue',
+        'pc':  'tab:orange',
+        'ode': 'tab:green',
+    }
+    LINE_STYLES = {
+        'Exact':  '-',
+        'Fitted': '--',
+    }
+    MARKERS = {
+        'p':   'o',
+        'pc':  's',
+        'ode': '^',
     }
 
-    fig, ax = plt.subplots(figsize=(8, 4.5))
+    fig, ax = plt.subplots(figsize=(7, 4.5))
 
-    for (score_label, sampler), swd_list in curves.items():
-        marker, linestyle, sampler_name = STYLES[sampler]
-        ax.plot(NFE_LIST, swd_list,
-                marker=marker, linestyle=linestyle,
-                color=COLORS[score_label], markersize=5,
-                label=f'{score_label} Score + {sampler_name}')
+    for (score_label, sampler), (nfe_actual, swd_list) in curves.items():
+        ax.plot(
+            nfe_actual, swd_list,
+            marker=MARKERS[sampler],
+            linestyle=LINE_STYLES[score_label],
+            color=COLORS[sampler],
+            markersize=5
+        )
 
     ax.set_xscale('log')
     ax.set_yscale('log')
+    ax.set_xticks(NFE_LIST)
+    ax.set_xticklabels([str(n) for n in NFE_LIST])
     ax.set_xlabel('Number of Function Evaluations (NFE)', fontsize=11)
     ax.set_ylabel('Sliced Wasserstein Distance', fontsize=11)
-    ax.set_title('Convergence Analysis: SWD vs NFE', fontsize=12)
-    ax.legend(fontsize=8, ncol=2)
     ax.grid(True, which='both', alpha=0.3)
 
-    plt.tight_layout()
+    # --------------------------------------------------------------
+    # Two separate legend panels:
+    #   1) solver legend (color + marker)
+    #   2) score legend (linestyle)
+    # Title via suptitle to avoid overlapping the legend boxes
+    # --------------------------------------------------------------
+    solver_handles = [
+        Line2D([0], [0], color=COLORS['p'],   marker='o', linestyle='-', markersize=5, label='EM'),
+        Line2D([0], [0], color=COLORS['pc'],  marker='s', linestyle='-', markersize=5, label='PC'),
+        Line2D([0], [0], color=COLORS['ode'], marker='^', linestyle='-', markersize=5, label='ODE'),
+    ]
+
+    score_handles = [
+        Line2D([0], [0], color='dimgray', linestyle='-',  linewidth=2, label='Exact'),
+        Line2D([0], [0], color='dimgray', linestyle='--', linewidth=2, label='Fitted'),
+    ]
+
+    legend_solver = ax.legend(
+        handles=solver_handles,
+        title='Solver',
+        fontsize=8,
+        title_fontsize=9,
+        loc='upper left',
+        bbox_to_anchor=(0.12, 1.20),
+        ncol=3,
+        frameon=True,
+        columnspacing=1.0,
+        handlelength=2.0,
+    )
+    ax.add_artist(legend_solver)
+
+    ax.legend(
+        handles=score_handles,
+        title='Score',
+        fontsize=8,
+        title_fontsize=9,
+        loc='upper right',
+        bbox_to_anchor=(0.88, 1.20),
+        ncol=2,
+        frameon=True,
+        columnspacing=1.0,
+        handlelength=2.0,
+    )
+
+    # fig.suptitle('Convergence Analysis: SWD vs NFE', fontsize=12)
+    plt.tight_layout(rect=[0, 0, 1, 0.82])
     out_path = 'output/visual2_convergence.png'
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     plt.savefig(out_path, dpi=150, bbox_inches='tight')
